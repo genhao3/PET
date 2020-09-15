@@ -346,7 +346,7 @@ if __name__ == '__main__':
         criterion = nn.CrossEntropyLoss().cuda()
         optimizer = torch.optim.SGD(model.parameters(), lr)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
-        if args.resume:
+        if args.resume:  # 万一训练中断，可以恢复训练
             checkpoint_path = args.save_dir + '/checkpoint' + '/best_new_dogenet_b7_' + args.v + '.pth.tar'
             if os.path.exists(checkpoint_path):
                 checkpoint = torch.load(checkpoint_path)
@@ -363,7 +363,7 @@ if __name__ == '__main__':
             else:
                 print('无保存模型，重新训练')
                 logging.info('无保存模型，重新训练')
-        if flod_idx > 0 and not args.resume:
+        if flod_idx > 0 and not args.resume:  # 从第二折起，迭代前面最好的模型继续训练
             model.load_state_dict(torch.load(args.save_dir + '/best_acc_dogenet_b7_' + args.v + '.pth'))
             print('加载最好的模型')
             logging.info('加载最好的模型')
