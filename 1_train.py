@@ -344,7 +344,7 @@ if __name__ == '__main__':
         args.start_epoch = 0
         model = DogeNet().cuda()
         criterion = nn.CrossEntropyLoss().cuda()
-        optimizer = torch.optim.SGD(model.parameters(), lr)
+        optimizer = torch.optim.SGD(model.parameters(), lr, weight_decay=5e-4)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
         if args.resume:  # 万一训练中断，可以恢复训练
             checkpoint_path = args.save_dir + '/checkpoint' + '/best_new_dogenet_b7_' + args.v + '.pth.tar'
