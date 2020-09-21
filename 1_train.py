@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 import os, sys, glob, argparse
-import random
 
+import torch.optim as optim
 import numpy as np
-from tqdm import tqdm
 from efficientnet_pytorch import EfficientNet
-import time, datetime
+import time
 import config
-import cv2
+
+import tensorflow as tf
 from PIL import Image
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, KFold
@@ -19,12 +19,9 @@ torch.manual_seed(0)
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = True
 
-import torchvision.models as models
 import torchvision.transforms as transforms
 
 import torch.nn as nn
-
-import torch.optim as optim
 
 from torch.utils.data.dataset import Dataset
 import logging
@@ -34,7 +31,7 @@ import os
 def write_log(log_dir):
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    filename = log_dir + '/log_dogenet-b7_' + args.v + '.log'
+    filename = log_dir + '/log_dogenet-b8_' + args.v + '.log'
     logging.basicConfig(
         filename=filename,
         level=logging.INFO,
@@ -132,31 +129,14 @@ class ProgressMeter(object):
 class DogeNet(nn.Module):
     def __init__(self):
         super(DogeNet, self).__init__()
-
         # model = EfficientNet.from_pretrained('efficientnet-b5', weights_path='./model/efficientnet-b5-b6417697.pth')
-        model = EfficientNet.from_pretrained('efficientnet-b7', weights_path='./model/efficientnet-b7-dcc49843.pth')
+        model = EfficientNet.from_pretrained('efficientnet-b8')
         in_channel = model._fc.in_features
         model._fc = nn.Linear(in_channel, 3)
         self.efficientnet = model
 
     def forward(self, img):
         out = self.efficientnet(img)
-        return out
-
-
-class VisitNet(nn.Module):
-    def __init__(self):
-        super(VisitNet, self).__init__()
-
-        model = models.resnet50(pretrained=False)
-        pre = torch.load("./pretrain/resnet50-19c8e357.pth")
-        model.load_state_dict(pre)
-        # model.avgpool = nn.AdaptiveAvgPool2d(1)
-        # model.fc = nn.Linear(512 * 4, 3)
-        self.resnet = model
-
-    def forward(self, img):
-        out = self.resnet(img)
         return out
 
 
@@ -238,6 +218,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
 
     end = time.time()
+    epoch_loss = []
     for i, (input, target) in enumerate(train_loader):
         input = input.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
@@ -254,6 +235,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure accuracy and record loss
         acc1, acc5 = accuracy(output, target, topk=(1, 3))
         losses.update(loss.item(), input.size(0))
+        epoch_loss.append(loss.item())
         top1.update(acc1[0], input.size(0))
         top5.update(acc5[0], input.size(0))
 
@@ -268,6 +250,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         if i % 100 == 0:
             progress.pr2int(i)
+    return np.mean(epoch_loss)
 
 
 def CrossEntropyLoss_label_smooth(outputs, targets,
@@ -292,6 +275,8 @@ if __name__ == '__main__':
     logging.info('K={}\tepochs={}\tbatch_size={}\tresume={}\tlr={}'.format(args.k,
                                                                            args.epochs, args.batch_size, args.resume,
                                                                            args.lr))
+    k_logger = tf.summary.create_file_writer('./picture/k/tensorboard/b8_' + args.v)  # 记录每k折的loss和acc曲线图
+    # tensorflow-gpu =2.0.0
     train_jpg = np.array(glob.glob(args.dataset_train_path))
     skf = KFold(n_splits=args.k, random_state=233, shuffle=True)
     best_acc = 0
@@ -344,10 +329,10 @@ if __name__ == '__main__':
         args.start_epoch = 0
         model = DogeNet().cuda()
         criterion = nn.CrossEntropyLoss().cuda()
-        optimizer = torch.optim.SGD(model.parameters(), lr, weight_decay=5e-4)
+        optimizer = torch.optim.SGD(model.parameters(), lr)
         scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=args.gamma)
         if args.resume:  # 万一训练中断，可以恢复训练
-            checkpoint_path = args.save_dir + '/checkpoint' + '/best_new_dogenet_b7_' + args.v + '.pth.tar'
+            checkpoint_path = args.save_dir + '/checkpoint' + '/best_new_dogenet_b8' + args.v + '.pth.tar'
             if os.path.exists(checkpoint_path):
                 checkpoint = torch.load(checkpoint_path)
                 start_flod_idx = checkpoint['flod_idx']
@@ -364,31 +349,35 @@ if __name__ == '__main__':
                 print('无保存模型，重新训练')
                 logging.info('无保存模型，重新训练')
         if flod_idx > 0 and not args.resume:  # 从第二折起，迭代前面最好的模型继续训练
-            model.load_state_dict(torch.load(args.save_dir + '/best_acc_dogenet_b7_' + args.v + '.pth'))
+            model.load_state_dict(torch.load(args.save_dir + '/best_acc_dogenet_b8' + args.v + '.pth'))
             print('加载最好的模型')
             logging.info('加载最好的模型')
-        # elif flod_idx > 0:
-        #     model.load_state_dict(torch.load(log_dir + '/best_acc_dogenet_b7v3.pt'))
-        # model.train(mode=True)
-        # model = nn.DataParallel(model).cuda()
-
+        all_loss = []
+        epoch_logger = tf.summary.create_file_writer(
+            './picture/epoch/tensorboard/b8_k=' + str(flod_idx + 1) + '_' + args.v)  # 记录每个epoch的loss和acc曲线图
         for epoch in range(args.start_epoch, args.epochs):
             print('K/Epoch[{}/{} {}/{}]:'.format(flod_idx, args.k, epoch, args.epochs))
             logging.info('K/Epoch[{}/{} {}/{}]:'.format(flod_idx, args.k, epoch, args.epochs))
-            scheduler.step()
-            train(train_loader, model, criterion, optimizer, epoch)
+            loss = train(train_loader, model, criterion, optimizer, epoch)
+            all_loss.append(loss)
             val_acc = validate(val_loader, model, criterion)
             args.resume = False
             if val_acc.avg.item() >= best_acc:
                 best_acc = val_acc.avg.item()
-                torch.save(model.state_dict(), args.save_dir + '/best_acc_dogenet_b7_' + args.v + '.pth')
-            print('best_acc is :{}, lr:{}'.format(best_acc, scheduler.get_lr()))
-            logging.info('best_acc is :{}, lr:{}'.format(best_acc, scheduler.get_lr()))
+                torch.save(model.state_dict(), args.save_dir + '/best_acc_dogenet_b8' + args.v + '.pth')
+            print('best_acc is :{}, lr:{}'.format(best_acc, optimizer.param_groups[0]["lr"]))
+            logging.info('best_acc is :{}, lr:{}'.format(best_acc, optimizer.param_groups[0]["lr"]))
             # 保存最新模型
             checkpoint_path = args.save_dir + '/checkpoint'
             if not os.path.exists(checkpoint_path):
                 os.makedirs(checkpoint_path)
             state = {'model': model.state_dict(), 'optimizer': optimizer.state_dict(), 'epoch': epoch,
                      'best_acc': best_acc, 'flod_idx': flod_idx, 'scheduler': scheduler.state_dict()}
-            torch.save(state, checkpoint_path + '/best_new_dogenet_b7_' + args.v + '.pth.tar')
-        # break
+            torch.save(state, checkpoint_path + '/best_new_dogenet_b8' + args.v + '.pth.tar')
+            scheduler.step()
+            with epoch_logger.as_default():  # 将acc写入TensorBoard
+                tf.summary.scalar('epoch_loss', loss, step=(epoch + 1))
+                tf.summary.scalar('val_acc', val_acc.avg.item(), step=(epoch + 1))
+        with k_logger.as_default():  # 将acc写入TensorBoard
+            tf.summary.scalar('K_loss', np.mean(all_loss), step=(flod_idx + 1))
+            tf.summary.scalar('best_acc', best_acc, step=(flod_idx + 1))
