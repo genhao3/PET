@@ -1,20 +1,10 @@
 # -*- coding: utf-8 -*-
-import os, sys, glob, argparse
+import os
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 
-import time, datetime
-import pdb, traceback
-
-import cv2
-# import imagehash
+import time
 from PIL import Image
-
-from sklearn.model_selection import train_test_split, StratifiedKFold, KFold
-
-# from efficientnet_pytorch import EfficientNet
-# model = EfficientNet.from_pretrained('efficientnet-b4')
 
 import torch
 
@@ -25,14 +15,9 @@ torch.manual_seed(0)
 torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = True
 
-import torchvision.models as models
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
 import torch.nn as nn
 from efficientnet_pytorch import EfficientNet
-import torch.nn.functional as F
-import torch.optim as optim
-from torch.autograd import Variable
 from torch.utils.data.dataset import Dataset
 
 
@@ -67,36 +52,14 @@ class QRDataset(Dataset):
 class DogeNet(nn.Module):
     def __init__(self):
         super(DogeNet, self).__init__()
-
         # model = EfficientNet.from_pretrained('efficientnet-b5', weights_path='./model/efficientnet-b5-b6417697.pth')
-        # model = EfficientNet.from_pretrained('efficientnet-b7', weights_path='./model/efficientnet-b7-dcc49843.pth')
-        model = EfficientNet.from_pretrained('efficientnet-b7', weights_path='./model/efficientnet-b7-dcc49843.pth')
+        model = EfficientNet.from_pretrained('efficientnet-b8')
         in_channel = model._fc.in_features
         model._fc = nn.Linear(in_channel, 3)
         self.efficientnet = model
 
     def forward(self, img):
         out = self.efficientnet(img)
-        return out
-
-
-class VisitNet(nn.Module):
-    def __init__(self):
-        super(VisitNet, self).__init__()
-
-        model = models.resnet50(pretrained=False)
-        pre = torch.load("./pretrain/resnet50-19c8e357.pth")
-        model.load_state_dict(pre)
-        model.avgpool = nn.AdaptiveAvgPool2d(1)
-        model.fc = nn.Linear(2048, 3)
-        self.resnet = model
-
-    #         model = EfficientNet.from_pretrained('efficientnet-b4')
-    #         model._fc = nn.Linear(1792, 2)
-    #         self.resnet = model
-
-    def forward(self, img):
-        out = self.resnet(img)
         return out
 
 
@@ -133,42 +96,38 @@ test_jpg = [args.dataset_test_path + '/{0}.jpg'.format(x) for x in range(1, 2001
 test_jpg = np.array(test_jpg)
 
 test_pred = None
-for model_path in ['best_acc_dogenet_b7' + args.v + '.pth', 'resnet18_fold0.pt', 'resnet18_fold1.pt', 'resnet18_fold2.pt',
-                   'resnet18_fold3.pt', 'resnet18_fold4.pt', 'resnet18_fold5.pt',
-                   'resnet18_fold6.pt', 'resnet18_fold7.pt', 'resnet18_fold8.pt',
-                   'resnet18_fold9.pt']:
-    if model_path != 'best_acc_dogenet_b7' + args.v + '.pth':
-        continue
-    test_loader = torch.utils.data.DataLoader(
-        QRDataset(test_jpg,
-                  transforms.Compose([
-                      # transforms.RandomCrop(128),
-                      transforms.RandomRotation(degrees=args.RandomRotation, expand=True),  # 没旋转只有0.85,旋转有0.90
-                      transforms.Resize((args.Resize, args.Resize)),
-                      transforms.ColorJitter(brightness=args.ColorJitter, contrast=args.ColorJitter, saturation=args.ColorJitter),  # 加入1
-                      # transforms.CenterCrop((450, 450)),
-                      transforms.RandomHorizontalFlip(),
-                      transforms.RandomVerticalFlip(),
-                      transforms.ToTensor(),
-                      transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                  ])
-                  ), batch_size=args.batch_size, shuffle=False, num_workers=10, pin_memory=True
-    )
+model_path = 'best_acc_dogenet_b8' + args.v + '.pth'  # 模型名称
 
-    # model = VisitNet().cuda()
-    use_gpu = torch.cuda.is_available()
-    print(use_gpu)
-    model = DogeNet().cuda()
-    model.load_state_dict(torch.load(args.save_dir + '/' + model_path))
-    # model = nn.DataParallel(model).cuda()
-    if test_pred is None:
-        test_pred = predict(test_loader, model, 5)
-    else:
-        test_pred += predict(test_loader, model, 5)
-    break
+test_loader = torch.utils.data.DataLoader(
+    QRDataset(test_jpg,
+              transforms.Compose([
+                  # transforms.RandomCrop(128),
+                  transforms.RandomRotation(degrees=args.RandomRotation, expand=True),  # 没旋转只有0.85,旋转有0.90
+                  transforms.Resize((args.Resize, args.Resize)),
+                  transforms.ColorJitter(brightness=args.ColorJitter, contrast=args.ColorJitter,
+                                         saturation=args.ColorJitter),  # 加入1
+                  # transforms.CenterCrop((450, 450)),
+                  transforms.RandomHorizontalFlip(),
+                  transforms.RandomVerticalFlip(),
+                  transforms.ToTensor(),
+                  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+              ])
+              ), batch_size=args.batch_size, shuffle=False, num_workers=10, pin_memory=True
+)
+
+# model = VisitNet().cuda()
+use_gpu = torch.cuda.is_available()
+print(use_gpu)
+model = DogeNet().cuda()
+model.load_state_dict(torch.load(args.save_dir + '/' + model_path))  # 模型文件路径，默认放在args.save_dir下
+# model = nn.DataParallel(model).cuda()
+if test_pred is None:
+    test_pred = predict(test_loader, model, 5)
+else:
+    test_pred += predict(test_loader, model, 5)
 
 test_csv = pd.DataFrame()
 test_csv['uuid'] = list(range(1, 2001))
 test_csv['label'] = np.argmax(test_pred, 1)
 test_csv['label'] = test_csv['label'].map({1: 'AD', 0: 'CN', 2: 'MCI'})
-test_csv.to_csv(args.save_dir + '/best_acc_dogenet_b7_' + args.v + '.csv', index=None)
+test_csv.to_csv(args.save_dir + '/best_acc_dogenet_b8' + args.v + '.csv', index=False)
