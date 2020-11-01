@@ -28,6 +28,54 @@ class QRDataset(Dataset):
             self.transform = transform
         else:
             self.transform = None
+            
+    def crop_2(self, img):
+        # 以最长的一边为边长，把短的边补为一样长，做成正方形，避免resize时会改变比例
+        dowm = img.shape[0]
+        up = img.shape[1]
+        max1 = max(dowm, up)
+        dowm = (max1 - dowm) // 2
+        up = (max1 - up) // 2
+        dowm_zuo, dowm_you = dowm, dowm
+        up_zuo, up_you = up, up
+        if (max1 - img.shape[0]) % 2 != 0:
+            dowm_zuo = dowm_zuo + 1
+        if (max1 - img.shape[1]) % 2 != 0:
+            up_zuo = up_zuo + 1
+        matrix_pad = np.pad(img, pad_width=((dowm_zuo, dowm_you),  # 向上填充n个维度，向下填充n个维度
+                                        (up_zuo, up_you),  # 向左填充n个维度，向右填充n个维度
+                                        (0, 0))  # 通道数不填充
+                        , mode="constant",  # 填充模式
+                        constant_values=(0, 0))
+        img = matrix_pad
+        return img
+
+    def crop_1(self, img_path):
+        img = Image.open(img_path).convert('RGB')
+        img = np.array(img)
+        # print(img.shape)
+        index = np.where(img > 50)  # 找出像素值大于50的所以像素值的坐标
+        # print(index)
+        x = index[0]
+        y = index[1]
+        max_x = max(x)
+        min_x = min(x)
+        max_y = max(y)
+        min_y = min(y)
+        max_x = max_x + 10
+        min_x = min_x - 10
+        max_y = max_y + 10
+        min_y = min_y - 10
+        if max_x > img.shape[0]:
+            max_x = img.shape[0]
+        if min_x < 0:
+            min_x = 0
+        if max_y > img.shape[1]:
+            max_y = img.shape[1]
+        if min_y < 0:
+            min_y = 0
+        img = img[min_x:max_x, min_y:max_y, :]
+        return self.crop_2(img)
 
     def __getitem__(self, index):
         start_time = time.time()
