@@ -2,12 +2,12 @@ import argparse
 
 parser = argparse.ArgumentParser(description='PET Challenge')
 
-# data in/out and dataset 注意，我们对数据集进行了离线处理。数据集首先经过crop.py文件离线处理好并保存在本地文件夹./dataset/enhancement下
+# data in/out and dataset
 parser.add_argument('--dataset_train_path', default='./dataset/enhancement/train/*/*.png',
                     help='train root path')
 parser.add_argument('--dataset_test_path', default='./dataset/enhancement/test/AD&CN&MCI',
                     help='test root path')
-parser.add_argument("--save_dir", default='v0920_b8', help="all data dir")
+parser.add_argument("--save_dir", default='v0920_b8', help="all data dir")  # 运行产生的所有文件保存在此文件夹下
 parser.add_argument('--v', type=str, default='v7',
                     help='version')
 # 图像增强
