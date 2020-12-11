@@ -7,6 +7,10 @@
 科大讯飞脑PET比赛
 http://challenge.xfyun.cn/topic/info?type=PET
 
+初赛、复赛数据集
+链接：https://pan.baidu.com/s/1VQDRp3QalHbPMJZiVQJYsQ 
+提取码：1234 
+
 博客
 https://blog.csdn.net/qq_40150072/article/details/108698231
 
