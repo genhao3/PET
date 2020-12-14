@@ -6,8 +6,7 @@ import numpy as np
 from efficientnet_pytorch import EfficientNet
 import time
 import config
-
-import tensorflow as tf
+from torch.utils.tensorboard import SummaryWriter
 from PIL import Image
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, KFold
@@ -324,8 +323,8 @@ if __name__ == '__main__':
     logging.info('K={}\tepochs={}\tbatch_size={}\tresume={}\tlr={}'.format(args.k,
                                                                            args.epochs, args.batch_size, args.resume,
                                                                            args.lr))
-    k_logger = tf.summary.create_file_writer('./picture/k/tensorboard/b8_' + args.v)  # 记录每k折的loss和acc曲线图
-    # tensorflow-gpu =2.0.0
+    k_logger = SummaryWriter('./picture/k/tensorboard/b8_' + args.v)  # 记录每k折的loss和acc曲线图
+    # tensorboard =2.0.2
     train_jpg = np.array(glob.glob(args.dataset_train_path))
     skf = KFold(n_splits=args.k, random_state=233, shuffle=True)
     best_acc = 0
@@ -402,8 +401,7 @@ if __name__ == '__main__':
             print('加载最好的模型')
             logging.info('加载最好的模型')
         all_loss = []
-        epoch_logger = tf.summary.create_file_writer(
-            './picture/epoch/tensorboard/b8_k=' + str(flod_idx + 1) + '_' + args.v)  # 记录每个epoch的loss和acc曲线图
+        epoch_logger = SummaryWriter('./picture/epoch/tensorboard/b8_k=' + str(flod_idx + 1) + '_' + args.v)  # 记录每个epoch的loss和acc曲线图
         for epoch in range(args.start_epoch, args.epochs):
             print('K/Epoch[{}/{} {}/{}]:'.format(flod_idx, args.k, epoch, args.epochs))
             logging.info('K/Epoch[{}/{} {}/{}]:'.format(flod_idx, args.k, epoch, args.epochs))
@@ -424,9 +422,9 @@ if __name__ == '__main__':
                      'best_acc': best_acc, 'flod_idx': flod_idx, 'scheduler': scheduler.state_dict()}
             torch.save(state, checkpoint_path + '/best_new_dogenet_b8' + args.v + '.pth.tar')
             scheduler.step()
-            with epoch_logger.as_default():  # 将acc写入TensorBoard
-                tf.summary.scalar('epoch_loss', loss, step=(epoch + 1))
-                tf.summary.scalar('val_acc', val_acc.avg.item(), step=(epoch + 1))
-        with k_logger.as_default():  # 将acc写入TensorBoard
-            tf.summary.scalar('K_loss', np.mean(all_loss), step=(flod_idx + 1))
-            tf.summary.scalar('best_acc', best_acc, step=(flod_idx + 1))
+            # with epoch_logger.as_default():  # 将acc写入TensorBoard
+            epoch_logger.add_scalar('epoch_loss', loss, step=(epoch + 1))
+            epoch_logger.add_scalar('val_acc', val_acc.avg.item(), step=(epoch + 1))
+        # with k_logger.as_default():  # 将acc写入TensorBoard
+        k_logger.add_scalar('K_loss', np.mean(all_loss), step=(flod_idx + 1))
+        k_logger.add_scalar('best_acc', best_acc, step=(flod_idx + 1))
