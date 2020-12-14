@@ -324,7 +324,7 @@ if __name__ == '__main__':
                                                                            args.epochs, args.batch_size, args.resume,
                                                                            args.lr))
     k_logger = SummaryWriter('./picture/k/tensorboard/b8_' + args.v)  # 记录每k折的loss和acc曲线图
-    # tensorboard =2.0.2
+    # tensorboard =2.0.0
     train_jpg = np.array(glob.glob(args.dataset_train_path))
     skf = KFold(n_splits=args.k, random_state=233, shuffle=True)
     best_acc = 0
